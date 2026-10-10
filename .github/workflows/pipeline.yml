@@ -1,0 +1,115 @@
+name: Superkart MLOps Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "Superkart_project/deployment/best_model.joblib"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-prepare:
+    name: Validate and Prepare Data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: Superkart_project/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r Superkart_project/requirements.txt
+
+      - name: Register and validate dataset
+        run: python Superkart_project/model_building/data_register.py
+
+      - name: Prepare training and testing data
+        run: python Superkart_project/model_building/prep.py
+
+      - name: Upload train/test split artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sales-data-splits
+          path: |
+            Superkart_project/artifacts/train.csv
+            Superkart_project/artifacts/test.csv
+          if-no-files-found: error
+
+  train-and-evaluate:
+    name: Train and Evaluate Model
+    needs: validate-and-prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: Superkart_project/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r Superkart_project/requirements.txt
+
+      - name: Download train/test split artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sales-data-splits
+          path: Superkart_project/artifacts
+
+      - name: Train and tune model
+        run: python Superkart_project/model_building/train.py
+
+      - name: Evaluate saved model
+        run: python Superkart_project/model_building/evaluate.py
+
+      - name: Upload model and metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-sales-model
+          path: |
+            Superkart_project/deployment/best_model.joblib
+            Superkart_project/artifacts/metrics.json
+            Superkart_project/artifacts/cv_results.csv
+          if-no-files-found: error
+
+  commit-model:
+    name: Commit Model to Repository
+    needs: train-and-evaluate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download trained model artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-sales-model
+          path: Superkart_project
+
+      - name: Commit trained model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Superkart_project/deployment/best_model.joblib
+          if git diff --cached --quiet; then
+            echo "No model changes to commit."
+          else
+            git commit -m "Update trained sales model [skip ci]"
+            git push origin HEAD:main
+          fi
