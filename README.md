@@ -60,5 +60,5 @@ After the successful pipeline run, add the actual held-out test metrics (MAE, RM
 ## Deployment
 
 - GitHub repository: add/confirm this repository URL.
-- Streamlit application: add your deployed `https://...streamlit.app` URL.
+- Streamlit application: add your deployed `https://sales-forecasting-mlops-cf5dbdrokch7yycgvntgms.streamlit.app/` URL.
 - GitHub Actions: link to a successful workflow run.
